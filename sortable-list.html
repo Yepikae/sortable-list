@@ -1,0 +1,235 @@
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../taaabs-themes/taaabs-theme.html">
+
+<dom-module id="sortable-list">
+  <template>
+    <style include="taaabs-theme"></style>
+    <style>
+      :host {
+        display: block;
+      }
+      :host .cell {
+        padding: 7px;
+        box-sizing: border-box;
+        border: solid 1px rgba(0,0,0,0);
+      }
+
+      :host .cell:nth-child(2n) {
+        background-color: var(--paper-grey-100);
+      }
+
+      :host .cell:nth-child(2n):hover {
+        background-color: var(--paper-grey-200);
+      }
+
+      :host .cell paper-checkbox{
+        float: right;
+      }
+
+      :host .highlight-bottom {
+        border-bottom: dashed 1px black;
+      }
+
+      :host .highlight-top {
+        border-top: dashed 1px black;
+      }
+
+      :host #dragging-text-content{
+        line-height: 24px;
+        text-align: center;
+        height: 24px;
+        transition: opacity 0.1s ease-in-out;
+      }
+
+      :host .hide{
+        opacity: 0;
+      }
+    </style>
+    <div id="dragging-text-content" class="hide no-select">[[_draggingTextContent]]</div>
+    <div id="list-target"></div>
+
+  </template>
+  <script>
+    Polymer({
+      is: 'sortable-list',
+
+      properties: {
+        /**
+         * The list of sortable elements.
+         *
+         * @attribute list
+         * @type Array
+         */
+        list: {
+          type: Array,
+          notify: true,
+          value: []
+        },
+
+        /**
+         * Labels of each element of the list
+         *
+         * @attribute labels
+         * @type Array
+         */
+        labels: {
+          type: Array,
+          notify: true,
+          value: []
+        },
+
+        /**
+         * If true, elements have checkbox to select the.
+         *
+         * @attribute selectable
+         * @type Boolean
+         */
+        selectable: {
+          type: Boolean,
+          notify: true,
+          value: null
+        },
+
+        /**
+         * True, if currently draggin, false otherwise.
+         *
+         * @attribute _dragging
+         * @type Boolean
+         */
+        _dragging: {
+          type: Boolean,
+          notify: true,
+          value: false
+        },
+
+        /**
+         * The current dragged text content.
+         *
+         * @attribute _draggedTextContent
+         * @type String
+         */
+        _draggingTextContent: {
+          type: String,
+          notify: true,
+          value: ""
+        },
+
+        /**
+         * The hovered element at start of traking.
+         *
+         * @attribute _hoveredElement
+         * @type Object
+         */
+        _hoveredElement: {
+          type: Object,
+          notify: true,
+          value: null
+        },
+
+        /**
+         * The hovered element index.
+         *
+         * @attribute _hoveredIndex
+         * @type Number
+         */
+        _hoveredIndex: {
+          type: Number,
+          notify: true,
+          value: -1
+        }
+      },
+
+      attached: function() {},
+
+      ready: function() {},
+
+      refresh: function() {
+        this.$['list-target'].innerHTML = "";
+        for (var i = 0; i < this.list.length; i++) {
+          var div = document.createElement('div');
+          div.textContent = this.list[i];
+          div.classList.add('cell', 'sortable-list-cell', 'no-select', 'clickable', 'hoverable', 'bgLightGrey100H');
+          div['data-list-value'] = this.list[i];
+          this.listen(div, 'track', '_handleTrack');
+          this.listen(div, 'mouseleave', '_onMouseLeave');
+          if(this.labels.length > i){
+            var span = document.createElement('span');
+            span.textContent = this.labels[i];
+            span.style.paddingLeft = '20px';
+            span.classList.add('fgLog', 'small');
+            div.appendChild(span);
+          }
+          if (this.selectable) {
+            var checkbox = document.createElement('paper-checkbox');
+            checkbox.set('checked', true);
+            checkbox.set('noink', true);
+            div.appendChild(checkbox);
+          }
+          this.$['list-target'].appendChild(div);
+        }
+      },
+
+      getExclusiveList: function(){
+        var result = [];
+        var n = this.$['list-target'].childNodes;
+        for (var i = 0; i < n.length; i++){
+          var c = Polymer.dom(n[i]).querySelector('paper-checkbox');
+          if(c.checked) result.push(n[i]['data-list-value']);
+        }
+        return result;
+      },
+
+      _handleTrack: function(e) {
+        var elem = null;
+        var indexElem = 0;
+        switch (e.detail.state) {
+          case 'start':
+            this.set('_dragging', true);
+            elem = e.detail.hover();
+            if (elem.classList.contains("sortable-list-cell")) {
+              // Set the dragging content
+              this.set('_draggingTextContent', elem['data-list-value']);
+              this.$['dragging-text-content'].classList.remove('hide');
+              // Set the hovered element.
+              this.set('_hoveredElement', elem);
+              // Set the hovered element index
+              while ((elem = elem.previousSibling) !== null)
+                indexElem++;
+              this.set('_hoveredIndex', indexElem);
+            }
+            break;
+          case 'track':
+            elem = e.detail.hover();
+            if (elem !== this._hoveredElement && elem.classList.contains("sortable-list-cell")) {
+              if (e.detail.dy > 0)
+                elem.classList.add('highlight-bottom');
+              else
+                elem.classList.add('highlight-top');
+            }
+            break;
+          case 'end':
+            if (this._dragging) {
+              this.set('_dragging', false);
+              this.$['dragging-text-content'].classList.add('hide');
+              elem = e.detail.hover();
+              if (elem !== this._hoveredElement && elem.classList.contains("sortable-list-cell")) {
+                if (e.detail.dy > 0)
+                  this.$['list-target'].insertBefore(this._hoveredElement, elem.nextSibling);
+                else
+                  this.$['list-target'].insertBefore(this._hoveredElement, elem);
+                // Set the hovered element index
+                var n = this.$['list-target'].childNodes;
+                this.set('list', []);
+                for (var i = 0; i < n.length; i++) this.push('list', n[i]['data-list-value']);
+              }
+            }
+            break;
+        }
+      },
+
+      _onMouseLeave: function(evt) {
+        evt.target.classList.remove('highlight-top', 'highlight-bottom');
+      }
+    });
+  </script>
+</dom-module>
